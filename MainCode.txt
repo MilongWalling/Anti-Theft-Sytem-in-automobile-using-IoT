@@ -1,0 +1,256 @@
+
+#include <Adafruit_GPS.h>
+#include <SoftwareSerial.h>
+
+#define SIM800_TX_PIN 8
+ 
+
+#define SIM800_RX_PIN 7
+ 
+
+SoftwareSerial mySerial(3, 2);
+
+Adafruit_GPS GPS(&mySerial);
+
+
+#define GPSECHO  false
+
+boolean usingInterrupt = false;
+void useInterrupt(boolean); 
+SoftwareSerial serialSIM800(SIM800_TX_PIN,SIM800_RX_PIN);
+
+int xAxisPin = A0;
+int yAxisPin = A1;
+int zAxisPin = A3;
+
+int flag = 0,j=0;
+int a[10];
+
+float xAvgValg,yAvgValg,zAvgValg;
+
+void setup()  
+{
+  Serial.begin(115200);
+  while(!Serial);
+   
+  serialSIM800.begin(9600);
+  int i = 0,x,y,z,sumx=0,sumy=0,sumz=0;
+  
+  for(i=0;i<10;i++)
+    a[i] = 0;
+
+  i=0;  
+  while(i<10)
+  {
+    x = analogRead(xAxisPin);
+    y = analogRead(yAxisPin);
+    z = analogRead(zAxisPin);
+    sumx = sumx + x;
+    sumy = sumy + y;
+    sumz = sumz + z;
+    i = i + 1;
+    delay(1000);
+  }
+  float xAvg = (float)(sumx / 10);
+  float yAvg = (float)(sumy / 10);
+  float zAvg = (float)(sumz / 10);
+
+  xAvgValg = (((float)(xAvg * 5) / 1024) - 1.65) / 0.330;
+  yAvgValg = (((float)(yAvg * 5) / 1024) - 1.65) / 0.330;
+  zAvgValg = (((float)(zAvg * 5) / 1024) - 1.65) / 0.330;
+
+  Serial.print("Average Values:\n");
+  Serial.print("avgX = ");
+  Serial.print(xAvgValg);
+  Serial.print("\t");
+  Serial.print("avgY = ");
+  Serial.print(yAvgValg);
+  Serial.print("\t");
+  Serial.print("avgZ = ");
+  Serial.print(zAvgValg);
+  Serial.print("\t");   
+   
+  Serial.println();
+  Serial.println("Adafruit GPS library basic test!");
+
+  GPS.begin(9600);
+  
+  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+
+
+  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);  
+  
+  GPS.sendCommand(PGCMD_ANTENNA);
+
+  
+  useInterrupt(true);
+
+  delay(1000);
+
+  mySerial.println(PMTK_Q_RELEASE);
+}
+
+
+
+SIGNAL(TIMER0_COMPA_vect) {
+  char c = GPS.read();
+ 
+#ifdef UDR0
+  if (GPSECHO)
+    if (c) UDR0 = c;  
+    
+#endif
+}
+
+void useInterrupt(boolean v) {
+  if (v) {
+   
+    OCR0A = 0xAF;
+    TIMSK0 |= _BV(OCIE0A);
+    usingInterrupt = true;
+  } else {
+    
+    TIMSK0 &= ~_BV(OCIE0A);
+    usingInterrupt = false;
+  }
+}
+
+uint32_t timer = millis();
+void loop()                   
+{
+ 
+  if (! usingInterrupt) {
+    
+    char c = GPS.read();
+   
+    if (GPSECHO)  
+      if (c) Serial.print(c);  
+  }
+  
+  
+  if (GPS.newNMEAreceived()) {
+     
+  
+    if (!GPS.parse(GPS.lastNMEA()))   
+      return;  
+
+  
+  if (timer > millis())  timer = millis();  
+
+   
+  if (millis() - timer > 2000) {   
+    timer = millis(); // reset the timer  
+    
+    
+    int i,count=0;
+  if(flag==0)
+  {
+  int xAxisValADC = analogRead(xAxisPin);
+  int yAxisValADC = analogRead(yAxisPin);
+  int zAxisValADC = analogRead(zAxisPin);
+    
+  float xAxisValg = (((float)(xAxisValADC * 5) / 1024) - 1.65) / 0.330;
+  float yAxisValg = (((float)(yAxisValADC * 5) / 1024) - 1.65) / 0.330;
+  float zAxisValg = (((float)(zAxisValADC * 5) / 1024) - 1.65) / 0.330;
+
+  Serial.print("currX = ");
+  Serial.print(xAxisValg);
+  Serial.print("\t");
+  Serial.print("currY = ");
+  Serial.print(yAxisValg);
+  Serial.print("\t");
+  Serial.print("currZ = ");
+  Serial.print(zAxisValg);
+  Serial.print("\t");   
+
+  if(fabs(xAvgValg - xAxisValg) > 0.14 || fabs(yAvgValg - yAxisValg) > 0.14 || fabs(zAvgValg - zAxisValg) > 0.14)
+    a[j] = 1;
+
+  Serial.print("Instance = ");
+  Serial.print(j);
+  Serial.print("\t");
+  Serial.print("Motion = ");
+  Serial.print(a[j]);
+  
+    
+  j = (j + 1) % 10; 
+  for(i=0;i<10;i++)
+    count = count + a[i];
+
+  Serial.print("\t");
+  Serial.print("Total Motion Count = ");
+  Serial.print(count);
+
+  Serial.println();
+  
+  if(count > 4)
+  {
+    Serial.println("Sending SMS...");
+   
+    //Set SMS format to ASCII
+    serialSIM800.write("AT+CMGF=1\r\n");
+    delay(1000);
+ 
+    //Send new SMS command and message number
+    serialSIM800.write("AT+CMGS=\"07630979519\"\r\n");
+    delay(1000);
+   
+    //Send SMS content
+    serialSIM800.write("ALERT! Someone tried to break into your system");
+    delay(1000);
+   
+    //Send Ctrl+Z / ESC to denote SMS message is complete
+    serialSIM800.write((char)26);
+    delay(1000);
+     
+    Serial.println("SMS Sent!"); 
+    
+    
+    Serial.print("\nTime: ");  
+    Serial.print(GPS.hour, DEC); Serial.print(':');  
+    Serial.print(GPS.minute, DEC); Serial.print(':');  
+    Serial.print(GPS.seconds, DEC); Serial.print('.');  
+    Serial.println(GPS.milliseconds);  
+    Serial.print("Date: ");  
+    Serial.print(GPS.day, DEC); Serial.print('/');  
+    Serial.print(GPS.month, DEC); Serial.print("/20");  
+    Serial.println(GPS.year, DEC);    
+    Serial.print("Fix: "); Serial.print((int)GPS.fix);  
+    Serial.print(" quality: "); Serial.println((int)GPS.fixquality);
+  
+    if (GPS.fix) {  
+      Serial.print("Location: ");  
+      Serial.print(GPS.latitude, 4); Serial.print(GPS.lat);  
+      Serial.print(", ");    
+      Serial.print(GPS.longitude, 4); Serial.println(GPS.lon);  
+      Serial.print("Location (in degrees, works with Google Maps): ");  
+      Serial.print(GPS.latitudeDegrees, 4);  
+      Serial.print(", ");      
+      Serial.println(GPS.longitudeDegrees, 4);   
+      
+      Serial.print("Speed (knots): "); Serial.println(GPS.speed);
+      Serial.print("Angle: "); Serial.println(GPS.angle);
+      Serial.print("Altitude: "); Serial.println(GPS.altitude);
+      Serial.print("Satellites: "); Serial.println((int)GPS.satellites);
+
+      serialSIM800.print("AT+CMGF=1\r");
+      delay(1000);
+      serialSIM800.print("AT+CMGS=\"+07630979519\"\r");
+      delay(1000);
+      //The text of the message to be sent.
+     serialSIM800.print("Latitude :");
+     serialSIM800.println(GPS.latitudeDegrees, 6);
+      serialSIM800.print("Longitude:");
+      serialSIM800.println(GPS.longitudeDegrees, 6);
+      delay(1000);
+      serialSIM800.write(0x1A);
+      delay(1000);
+      Serial.print("COORDINATES SENT");
+    }
+    delay(1000);
+     flag=1;
+  }
+}
+  }
+}
+}
