@@ -16,5 +16,5 @@ current location of his vehicle thus enabling him to monitor his vehicle in real
 **Tech Involved:**  
 1. **Arduino**: A microcontroller board used for integrating all the following modules into a single functioning unit.  
 2. **Accelerometer**: Used as a motion sensor that detects any 3D(x,y,z-axis) motion.  
-3. **GPS module**: Used locating the live location of the device. 
+3. **GPS module**: Used for  locating the live location of the device. 
 4. **SIM module**: Used for transmittion of messages over a mobile network.
